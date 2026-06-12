@@ -25,7 +25,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [students, setStudents] = useState(sampleStudents);
   const [courses, setCourses] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [_modalOpen, setModalOpen] = useState(false);
   const [courseModalOpen, setCourseModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingCourseId, setEditingCourseId] = useState(null);
@@ -200,32 +200,8 @@ function App() {
     setCourseModalOpen(false);
     setEditingCourseId(null);
   };
-
-  const handleFormChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleCourseFormChange = (field, value) => {
     setCourseFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const saveStudent = () => {
-    if (!formData.name || !formData.email || !formData.course) {
-      alert("Please fill all fields");
-      return;
-    }
-
-    if (editingId) {
-      setStudents((prev) =>
-        prev.map((student) =>
-          student.id === editingId ? { ...formData, id: editingId } : student
-        )
-      );
-    } else {
-      const nextId = students.length ? Math.max(...students.map((s) => s.id)) + 1 : 1;
-      setStudents((prev) => [...prev, { id: nextId, ...formData }]);
-    }
-    closeModal();
   };
 
   const saveCourse = async () => {
