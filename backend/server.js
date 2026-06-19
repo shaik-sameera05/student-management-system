@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const db = require("./db");
 const { initializeDatabase } = require("./migrations");
+require("dotenv").config();
 
 const app = express();
 const apiRouter = express.Router();
@@ -12,8 +13,9 @@ app.use(express.json());
 // Initialize database tables before starting the server
 const startServer = async () => {
   await initializeDatabase();
-  app.listen(5000, () => {
-    console.log("Server Running On Port 5000");
+  const port = process.env.PORT || 5000;
+  app.listen(port, () => {
+    console.log(`Server Running On Port ${port}`);
   });
 };
 
