@@ -1,7 +1,13 @@
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import axios from "axios";
 import "./App.css";
+
+const API_BASE_URL = "http://localhost:5000/api";
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { "Content-Type": "application/json" },
+});
 
 const sidebarItems = [
   { label: "Dashboard", key: "dashboard" },
@@ -11,21 +17,12 @@ const sidebarItems = [
   { label: "Settings", key: "settings" },
 ];
 
-const sampleStudents = [
-  { id: 1, name: "Ava Patel", email: "ava.patel@email.com", course: "Computer Science", status: "Active" },
-  { id: 2, name: "Noah Walker", email: "noah.walker@email.com", course: "Business Analytics", status: "Active" },
-  { id: 3, name: "Mila Howard", email: "mila.howard@email.com", course: "Design", status: "Pending" },
-  { id: 4, name: "Leo Nguyen", email: "leo.nguyen@email.com", course: "Biotechnology", status: "Active" },
-  { id: 5, name: "Sophie Chen", email: "sophie.chen@email.com", course: "Data Science", status: "Active" },
-  { id: 6, name: "James Murphy", email: "james.murphy@email.com", course: "Engineering", status: "Pending" },
-];
-
 function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
-  const [students, setStudents] = useState(sampleStudents);
+  const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [_modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [courseModalOpen, setCourseModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingCourseId, setEditingCourseId] = useState(null);
@@ -41,24 +38,38 @@ function App() {
     courseStudentCounts: []
   });
   const [settingsForm, setSettingsForm] = useState({ name: "", email: "", password: "" });
+  const [studentsLoading, setStudentsLoading] = useState(false);
 
-  const fetchCourses = async () => {
+  const fetchStudents = useCallback(async () => {
+    setStudentsLoading(true);
+    try {
+      const response = await apiClient.get("/students");
+      setStudents(response.data || []);
+    } catch (err) {
+      console.error("Error fetching students:", err.response?.data || err.message);
+      alert("Failed to load students");
+    } finally {
+      setStudentsLoading(false);
+    }
+  }, []);
+
+  const fetchCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await axios.get("http://localhost:5000/courses");
+      const response = await apiClient.get("/courses");
       setCourses(response.data || []);
     } catch (err) {
-      console.error("Error fetching courses:", err);
+      console.error("Error fetching courses:", err.response?.data || err.message);
       alert("Failed to load courses");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
     setReportsLoading(true);
     try {
-      const response = await axios.get("http://localhost:5000/reports");
+      const response = await apiClient.get("/reports");
       setReportsData(response.data || {
         totalStudents: 0,
         totalCourses: 0,
@@ -71,12 +82,12 @@ function App() {
     } finally {
       setReportsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchAdminSettings = async () => {
+  const fetchAdminSettings = useCallback(async () => {
     setSettingsLoading(true);
     try {
-      const response = await axios.get("http://localhost:5000/settings/admin");
+      const response = await apiClient.get("/settings/admin");
       setSettingsForm({ name: response.data.name || "", email: response.data.email || "", password: "" });
     } catch (err) {
       console.error("Error fetching admin settings:", err.response?.data || err.message);
@@ -84,7 +95,7 @@ function App() {
     } finally {
       setSettingsLoading(false);
     }
-  };
+  }, []);
 
   const saveAdminSettings = async () => {
     if (!settingsForm.name.trim() || !settingsForm.email.trim()) {
@@ -93,7 +104,7 @@ function App() {
     }
 
     try {
-      await axios.put("http://localhost:5000/settings/admin", {
+      await apiClient.put("/settings/admin", {
         name: settingsForm.name.trim(),
         email: settingsForm.email.trim(),
         password: settingsForm.password
@@ -134,6 +145,9 @@ function App() {
   };
 
   useEffect(() => {
+    if (activePage === "students") {
+      fetchStudents();
+    }
     if (activePage === "courses") {
       fetchCourses();
     }
@@ -143,7 +157,7 @@ function App() {
     if (activePage === "settings") {
       fetchAdminSettings();
     }
-  }, [activePage]);
+  }, [activePage, fetchStudents, fetchCourses, fetchReports, fetchAdminSettings]);
 
   const filteredStudents = useMemo(() => {
     const normalized = searchQuery.toLowerCase();
@@ -183,6 +197,61 @@ function App() {
   const closeModal = () => {
     setModalOpen(false);
     setEditingId(null);
+  };
+
+  const handleFormChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveStudent = async () => {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.course.trim() || !formData.status.trim()) {
+      alert("Name, email, course, and status are required");
+      return;
+    }
+
+    const payload = {
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      course: formData.course.trim(),
+      status: formData.status.trim(),
+    };
+
+    try {
+      if (editingId) {
+        await apiClient.put(`/students/${editingId}`, payload);
+        setStudents((prev) =>
+          prev.map((student) =>
+            student.id === editingId ? { ...student, ...payload } : student
+          )
+        );
+        alert("Student updated successfully");
+      } else {
+        const response = await apiClient.post("/students", payload);
+        setStudents((prev) => [...prev, { id: response.data.id, ...payload }]);
+        alert("Student added successfully");
+      }
+      closeModal();
+    } catch (err) {
+      console.error("Error saving student:", err.response?.data || err.message);
+      const errorMsg = err.response?.data?.message || "Failed to save student";
+      alert(errorMsg);
+    }
+  };
+
+  const deleteStudent = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this student?")) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/students/${id}`);
+      setStudents((prev) => prev.filter((student) => student.id !== id));
+      alert("Student deleted successfully");
+    } catch (err) {
+      console.error("Error deleting student:", err.response?.data || err.message);
+      const errorMsg = err.response?.data?.message || "Failed to delete student";
+      alert(errorMsg);
+    }
   };
 
   const openCourseModal = (course = null) => {
@@ -239,7 +308,7 @@ function App() {
 
     try {
       if (editingCourseId) {
-        await axios.put(`http://localhost:5000/courses/${editingCourseId}`, courseData);
+        await apiClient.put(`/courses/${editingCourseId}`, courseData);
         setCourses((prev) =>
           prev.map((course) =>
             course.id === editingCourseId 
@@ -249,7 +318,7 @@ function App() {
         );
         alert("Course updated successfully");
       } else {
-        const response = await axios.post("http://localhost:5000/courses", courseData);
+        const response = await apiClient.post("/courses", courseData);
         setCourses((prev) => [...prev, { id: response.data.id, ...courseData }]);
         alert("Course added successfully");
       }
@@ -260,17 +329,10 @@ function App() {
       alert(errorMsg);
     }
   };
-
-  const deleteStudent = (id) => {
-    if (window.confirm("Are you sure you want to delete this student?")) {
-      setStudents((prev) => prev.filter((student) => student.id !== id));
-    }
-  };
-
   const deleteCourse = async (id) => {
     if (window.confirm("Are you sure you want to delete this course?")) {
       try {
-        await axios.delete(`http://localhost:5000/courses/${id}`);
+        await apiClient.delete(`/courses/${id}`);
         setCourses((prev) => prev.filter((course) => course.id !== id));
         alert("Course deleted successfully");
       } catch (err) {
@@ -385,8 +447,11 @@ function App() {
                 <span className="result-count">{filteredStudents.length} results</span>
               </div>
 
-              <div className="table-container">
-                <table className="student-table">
+              {studentsLoading ? (
+                <p className="text-center text-muted">Loading students...</p>
+              ) : (
+                <div className="table-container">
+                  <table className="student-table">
                   <thead>
                     <tr>
                       <th>Name</th>
@@ -438,6 +503,7 @@ function App() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 
@@ -642,6 +708,67 @@ function App() {
           )}
         </section>
       </main>
+
+      {modalOpen && (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingId ? "Edit Student" : "Add New Student"}</h3>
+              <button className="close-button" onClick={closeModal}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <label>
+                Name
+                <input
+                  type="text"
+                  placeholder="Enter student name"
+                  value={formData.name}
+                  onChange={(e) => handleFormChange("name", e.target.value)}
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  placeholder="Enter student email"
+                  value={formData.email}
+                  onChange={(e) => handleFormChange("email", e.target.value)}
+                />
+              </label>
+              <label>
+                Course
+                <input
+                  type="text"
+                  placeholder="Enter student course"
+                  value={formData.course}
+                  onChange={(e) => handleFormChange("course", e.target.value)}
+                />
+              </label>
+              <label>
+                Status
+                <select
+                  value={formData.status}
+                  onChange={(e) => handleFormChange("status", e.target.value)}
+                >
+                  <option value="Active">Active</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={closeModal}>
+                Cancel
+              </button>
+              <button className="primary-button" onClick={saveStudent}>
+                {editingId ? "Update" : "Save"} Student
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {courseModalOpen && (
         <div className="modal-backdrop" onClick={closeCourseModal}>

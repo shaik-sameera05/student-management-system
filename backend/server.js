@@ -4,19 +4,25 @@ const db = require("./db");
 const { initializeDatabase } = require("./migrations");
 
 const app = express();
+const apiRouter = express.Router();
 
 app.use(cors());
 app.use(express.json());
 
-// Initialize database tables
-initializeDatabase();
+// Initialize database tables before starting the server
+const startServer = async () => {
+  await initializeDatabase();
+  app.listen(5000, () => {
+    console.log("Server Running On Port 5000");
+  });
+};
 
 app.get("/", (req, res) => {
   res.send("Student Management Backend Running");
 });
 
 // Get all students
-app.get("/students", (req, res) => {
+apiRouter.get("/students", (req, res) => {
   const sql = "SELECT * FROM students";
 
   db.query(sql, (err, result) => {
@@ -28,7 +34,7 @@ app.get("/students", (req, res) => {
 });
 
 // Add student
-app.post("/students", (req, res) => {
+apiRouter.post("/students", (req, res) => {
   const { name, email, course, status } = req.body;
 
   if (!name || !email || !course || !status) {
@@ -51,13 +57,53 @@ app.post("/students", (req, res) => {
   });
 });
 
+// Update student
+apiRouter.put("/students/:id", (req, res) => {
+  const studentId = parseInt(req.params.id, 10);
+  const { name, email, course, status } = req.body;
+
+  if (isNaN(studentId)) {
+    return res.status(400).json({ message: "Invalid student ID" });
+  }
+
+  if (!name || !email || !course || !status) {
+    return res.status(400).json({ message: "Name, email, course, and status are required" });
+  }
+
+  const sql =
+    "UPDATE students SET name = ?, email = ?, course = ?, status = ? WHERE id = ?";
+
+  db.query(sql, [name, email, course, status, studentId], (err, result) => {
+    if (err) {
+      console.error("Student update error:", err);
+      return res.status(500).json({ message: "Failed to update student", error: err.message });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    res.json({ message: "Student Updated Successfully" });
+  });
+});
+
 // Delete student
-app.delete("/students/:id", (req, res) => {
+apiRouter.delete("/students/:id", (req, res) => {
+  const studentId = parseInt(req.params.id, 10);
+
+  if (isNaN(studentId)) {
+    return res.status(400).json({ message: "Invalid student ID" });
+  }
+
   const sql = "DELETE FROM students WHERE id=?";
 
-  db.query(sql, [req.params.id], (err, result) => {
+  db.query(sql, [studentId], (err, result) => {
     if (err) {
       return res.status(500).json(err);
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Student not found" });
     }
 
     res.json({
@@ -67,7 +113,7 @@ app.delete("/students/:id", (req, res) => {
 });
 
 // Get all courses
-app.get("/courses", (req, res) => {
+apiRouter.get("/courses", (req, res) => {
   const sql = "SELECT * FROM courses";
 
   db.query(sql, (err, result) => {
@@ -79,7 +125,7 @@ app.get("/courses", (req, res) => {
 });
 
 // Add course
-app.post("/courses", (req, res) => {
+apiRouter.post("/courses", (req, res) => {
   const { name, instructor, credits, schedule } = req.body;
 
   // Validate required fields
@@ -117,7 +163,7 @@ app.post("/courses", (req, res) => {
 });
 
 // Update course
-app.put("/courses/:id", (req, res) => {
+apiRouter.put("/courses/:id", (req, res) => {
   const { name, instructor, credits, schedule } = req.body;
   const courseId = parseInt(req.params.id, 10);
 
@@ -159,7 +205,7 @@ app.put("/courses/:id", (req, res) => {
 });
 
 // Delete course
-app.delete("/courses/:id", (req, res) => {
+apiRouter.delete("/courses/:id", (req, res) => {
   const courseId = parseInt(req.params.id, 10);
 
   if (isNaN(courseId)) {
@@ -188,7 +234,7 @@ app.delete("/courses/:id", (req, res) => {
 });
 
 // Get reports
-app.get("/reports", (req, res) => {
+apiRouter.get("/reports", (req, res) => {
   const totalStudentsSql = "SELECT COUNT(*) AS totalStudents FROM students";
   const totalCoursesSql = "SELECT COUNT(*) AS totalCourses FROM courses";
   const activeStudentsSql = "SELECT COUNT(*) AS activeStudents FROM students WHERE status = 'Active'";
@@ -225,12 +271,12 @@ app.get("/reports", (req, res) => {
           }
 
           res.json({
-            totalStudents: totalStudentsResult[0]?.totalStudents || 0,
-            totalCourses: totalCoursesResult[0]?.totalCourses || 0,
-            activeStudents: activeStudentsResult[0]?.activeStudents || 0,
+            totalStudents: Number(totalStudentsResult[0]?.totalStudents || 0),
+            totalCourses: Number(totalCoursesResult[0]?.totalCourses || 0),
+            activeStudents: Number(activeStudentsResult[0]?.activeStudents || 0),
             courseStudentCounts: courseCountsResult.map((row) => ({
               courseName: row.courseName,
-              studentCount: row.studentCount
+              studentCount: Number(row.studentCount || 0)
             }))
           });
         });
@@ -240,7 +286,7 @@ app.get("/reports", (req, res) => {
 });
 
 // Get admin settings
-app.get("/settings/admin", (req, res) => {
+apiRouter.get("/settings/admin", (req, res) => {
   const sql = "SELECT name, email FROM admin_settings ORDER BY id LIMIT 1";
   db.query(sql, (err, result) => {
     if (err) {
@@ -257,7 +303,7 @@ app.get("/settings/admin", (req, res) => {
 });
 
 // Update admin settings
-app.put("/settings/admin", (req, res) => {
+apiRouter.put("/settings/admin", (req, res) => {
   const { name, email, password } = req.body;
 
   if (!name || !email) {
@@ -266,7 +312,7 @@ app.put("/settings/admin", (req, res) => {
 
   const sql = "UPDATE admin_settings SET name = ?, email = ?" +
     (password ? ", password = ?" : "") +
-    " WHERE id = (SELECT id FROM admin_settings ORDER BY id LIMIT 1)";
+    " ORDER BY id LIMIT 1";
 
   const params = password ? [name, email, password] : [name, email];
 
@@ -284,6 +330,8 @@ app.put("/settings/admin", (req, res) => {
   });
 });
 
-app.listen(5000, () => {
-  console.log("Server Running On Port 5000");
+app.use("/api", apiRouter);
+
+startServer().catch((err) => {
+  console.error("Failed to initialize database:", err);
 });
